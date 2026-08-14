@@ -1,0 +1,11 @@
+{
+  "name": "skullking-calculator2",
+  "version": "0.1.0",
+  "description": "Poängräknare för Skull King: Das Würfelspiel — iPhone-first",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "smoke": "node tools/smoke.mjs"
+  }
+}

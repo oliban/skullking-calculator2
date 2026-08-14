@@ -163,6 +163,7 @@ js/state.js        game state + transitions. no DOM
 js/storage.js      localStorage: autosave + hall of fame
 js/personas.js     pirate name/emoji pool, unique assignment
 js/i18n.js         sv/en dictionaries
+js/palette.js      one colour per seat
 js/ui/rail.js      the brass score rail
 js/ui/pad.js       the tap-pad
 js/ui/tally.js     pre-commit review + bonus entry
@@ -197,14 +198,21 @@ variant is a data change rather than a rewrite.
 **`state.js`** — transitions, no rendering:
 
 ```js
-export function newGame({players, ruleset, lang})
-export function setEntry(game, seat, field, value)
+export function newGame({players, ruleset, lang, id})
+export function setEntry(game, seat, patch)      // patch: {bid} | {tricks} | {mermaid} …
 export function advance(game)  /  export function back(game)
 export function commitHand(game)
 export function undo(game)
+export function legalValues(game)                // → values the pad may offer
+export function handScores(game, hand)           // → {playerId: number}
 export function totals(game)                     // → {playerId: number}
-export function standings(game)                   // → ranked, tie-aware
+export function standings(game)                  // → ranked, tie-aware
+export function isFinished(game)
 ```
+
+`setEntry` takes a partial-entry **patch** rather than a (field, value) pair:
+bonuses arrive as `{mermaid: true}` or `{pirates: 2}`, and one signature that
+covers bids, tricks and bonuses beats three.
 
 ### 3.2 Data model
 
@@ -212,20 +220,32 @@ export function standings(game)                   // → ranked, tie-aware
 game = {
   id, createdAt, lang, ruleset,
   players: [{id, name, emoji, seat}],
+  totalHands,                       // from handsFor(players.length)
   hands: [{
-    n, cardsDealt, committed,
-    entries: {playerId: {bid, tricks, mermaid, pirates, autoFilled}}
+    n, dice, committed,             // `dice` = dice dealt this hand
+    entries: {playerId: {bid, tricks, mermaid, pirates}}
   }],
-  cursor: {hand, phase, seat}     // phase: 'bid' | 'trick' | 'tally'
+  cursor: {hand, phase, seat}       // phase: 'bid' | 'trick' | 'tally'
 }
 ```
 
-Hands are **append-only and store raw inputs only** — never computed scores.
-Totals are always derived by summing `scoreHand` over committed hands.
+The hand's die count is named `dice`, not `cardsDealt` — this is a dice game, and
+`rules.js` keeps the neutral name for the scorer's parameter.
 
-This matters: it makes undo a cursor rewind instead of a points refund. The
-prototype's worst bug was undo-from-finale double-counting, which is
-structurally impossible when scores are derived.
+Hands are **append-only and store raw inputs only** — never computed scores.
+Committing a hand sets nothing but its flag; `handScores` and `totals` derive
+points on demand from the raw entries.
+
+This matters twice over:
+
+1. Undo becomes a cursor rewind instead of a points refund. The prototype's
+   worst bug was undo-from-finale double-counting, which is structurally
+   impossible when nothing is accumulated.
+2. There is one source of truth. A game restored from disk cannot carry stale or
+   tampered points, and switching ruleset mid-game rescores the hands already
+   played instead of leaving them scored under the old rules. Both are covered
+   by tests, because the first implementation cached scores and had exactly
+   these two latent bugs.
 
 Hall of fame is stored separately, keyed on the normalised (trimmed,
 case-folded) pirate name:
@@ -290,10 +310,19 @@ Bid for the whole crew (auto-advance, one tap each) → tricks for the whole cre
 → tally → book the hand. Roughly **9 taps for a 4-player hand**, against ~24–32
 with the old dropdowns.
 
-- The last player's tricks auto-fill from the remainder, **visibly marked as
-  auto**, with one-tap override. Silent auto-fill causes an argument exactly
-  once per game; the marker is not optional.
-- Undo steps back one entry. Long-press a rail chip to jump-edit that player.
+- **Every player reports their own trick count, including the last.** Nothing is
+  inferred from the remainder: a number the app assigned on somebody's behalf is
+  a number nobody agreed to. The safety net is instead a hard refusal — a hand
+  whose tricks do not sum to the dice dealt cannot be booked, and the shortfall
+  is stated.
+- Tapping a pirate's rail chip, or their numbers on the tally, re-opens that
+  entry with the cursor on them. The value is not cleared, so the hand stays
+  complete throughout a correction and one change is always enough to return to
+  the summary.
+- Undo at the summary means "let me back in", not "erase the last number".
+  Erasing it meant that correcting a *different* player left two blanks.
+- Once the hand is complete the round label in the header gains a ✓ and reopens
+  the booking screen — an explicit route back after any correction.
 - Illegal pad keys are inert, not hidden — the pad's shape stays stable.
 
 ### 4.3 Tap-pad sizing
@@ -318,7 +347,40 @@ fame). Settings as a sheet.
 Only Rodret carries the no-scroll constraint. Hall of fame is a lookup list and
 may scroll.
 
-### 4.6 Cozy, concretely
+### 4.6 One colour per player
+
+Each seat owns a colour for the whole game — teal, rose, leaf, sky, plum, brass,
+in that order. Stability is the point: the colour is how a player is recognised,
+so it must not shuffle between hands.
+
+It appears as a bar across the top of their rail chip (the legend), as the chip's
+glow when they are the one being asked, and as a **wash across the whole play
+surface**. That wash is the primary "whose turn is it" signal — answerable from
+across a table without reading anything.
+
+Brass is deliberately last: it is the app's own chrome colour, so a brass player
+reads as a player with no colour at all.
+
+### 4.7 The two questions must not look alike
+
+"How many will you take?" and "How many did you take?" take the same key values,
+and answering the wrong one silently corrupts the hand. Wording alone is not
+enough — nobody re-reads the sentence by hand six. So the surface changes:
+
+| | Bud (declaring) | Stick (reporting) |
+|---|---|---|
+| Surface | dark tarred deck | parchment ledger |
+| Text | lantern cream | ink |
+| Keys | square, brass-edged wood | round, pale, ink-stamped |
+| Inert values | dimmed into the dark | struck through on paper |
+| Phase tag | outlined | filled |
+| The player's bid | — | echoed as a pill, and ringed on the pad |
+
+The rail stays dark through both, so the scores never move and it still reads as
+one place. The smoke test asserts the two phases differ in computed surface, key
+shape and text colour, so this cannot regress into looking the same.
+
+### 4.8 Cozy, concretely
 
 Warm lantern palette — brass, worn plank, parchment, candle amber, wine for the
 shame state. Type from fonts that ship with iOS (Copperplate / Baskerville /
@@ -406,7 +468,7 @@ way arithmetic alone did not catch.
 |---|---|
 | Vertical budget is tight at 6 players | Measured budget per crew size, enforced by an automated check, not by eye |
 | Auto-advance is unforgiving when someone changes their bid mid-sequence | Undo, tappable ghost of the last entry, long-press-to-jump-edit |
-| Auto-filled last trick can encode a number nobody claimed | Visible auto marker + one-tap override |
+| A mis-heard number needs correcting mid-hand | Tap the pirate's chip to re-enter; the hand stays complete so one change returns you to the summary |
 | iOS repaint jank from layered texture | Transform/opacity only; grain is the first cut |
 | Small iPhones (SE, 13 mini) cannot hold the full layout | Degraded tier: shorter rail, smaller keys — explicitly a fallback, not a compromise to the main design |
 | Rules regressions from the card game creeping back in | §2 records the wrong turn; rulebook examples are permanent tests |

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<!-- viewport-fit=cover so env(safe-area-inset-*) reports real values on iPhone -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#171210">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rodret">
+<title>Skull King</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/helm.css">
+<link rel="stylesheet" href="css/screens.css">
+</head>
+<body>
+
+<!--
+  One fixed-height column. The rail and the pad are fixed bands; the middle
+  absorbs slack. Nothing here scrolls: recording a hand must never need a
+  scroll gesture, at 4 players or at 6.
+-->
+<main id="app">
+  <!-- Always visible, on every screen. This is the whole point of The Helm. -->
+  <header id="rail" aria-label="Poäng"></header>
+
+  <section id="stage">
+    <div id="prompt"></div>
+    <div id="pad"></div>
+  </section>
+</main>
+
+<!-- Sheets open BELOW the rail so the totals are never covered. There is no
+     toast or popup: nothing is allowed to float over the play surface. -->
+<div id="sheet" class="sheet" hidden></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

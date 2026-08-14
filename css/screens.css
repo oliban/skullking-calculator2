@@ -1,0 +1,503 @@
+/*
+ * Sheets: cabin (setup), tally, bonus, reckoning, hall of fame, settings.
+ *
+ * Every sheet opens BELOW the rail, never over it. The running totals stay
+ * visible in every state — including while a bonus is being entered, which is
+ * exactly when someone asks "wait, what's the score?".
+ */
+
+/*
+ * `[hidden]` must beat the layout rules below. The UA stylesheet's
+ * `[hidden] { display: none }` has lower specificity than `.sheet`, so without
+ * this the sheet stayed displayed while hidden — an invisible full-screen
+ * overlay covering the pad. Everything still WORKED programmatically, because
+ * synthetic clicks skip hit-testing; a real thumb would have hit nothing.
+ */
+[hidden] {
+  display: none !important;
+}
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Pinned under the rail, so the totals are never covered. */
+  top: calc(var(--rail-h) + var(--safe-top) + 3px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 14px 14px calc(var(--safe-bottom) + 12px);
+  background:
+    radial-gradient(120% 70% at 50% 0%, rgba(242, 167, 59, 0.09), rgba(0, 0, 0, 0) 70%),
+    linear-gradient(#241a15, #16110e);
+  border-top: 1px solid rgba(200, 155, 74, 0.28);
+  animation: rise var(--slide) var(--ease);
+}
+
+@keyframes rise {
+  from { transform: translateY(14px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/*
+ * Sheet contents arrive as a single wrapper element, so that wrapper — not the
+ * sheet — has to be the flex column. Without this the actions bunched up under
+ * the content and left a lake of dead space beneath them.
+ */
+.sheet > * {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet h2 {
+  margin: 2px 0 10px;
+  font-family: var(--f-label);
+  font-size: 14px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass);
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+.sheet .lede {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--parch-dim);
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+/* The one place scrolling is allowed: lookup views, never the entry path. */
+.sheet .scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sheet .actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+/* --- Buttons --------------------------------------------------------------- */
+
+.btn {
+  flex: 1 1 0;
+  min-height: 54px;
+  border-radius: 13px;
+  border: 2px solid rgba(200, 155, 74, 0.5);
+  background: radial-gradient(140% 130% at 30% 18%, #3c2b21, var(--wood) 62%, #241a14);
+  color: var(--parch);
+  font-family: var(--f-label);
+  font-size: 14px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  box-shadow: inset 0 1px 0 var(--bevel), 0 3px 0 #100c0a;
+  transition:
+    transform 160ms cubic-bezier(0.18, 1.5, 0.4, 1),
+    box-shadow 160ms ease-out;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.btn:active {
+  transform: translateY(4px) scale(0.98);
+  transition-duration: 55ms;
+  transition-timing-function: ease-out;
+  box-shadow:
+    inset 0 3px 9px rgba(0, 0, 0, 0.55),
+    inset 0 0 20px rgba(226, 112, 58, 0.45),
+    0 0 0 #100c0a;
+}
+.btn.primary {
+  border-color: var(--brass-hi);
+  background: linear-gradient(#4d3a1e, #33261a);
+}
+
+/*
+ * A refused action must LOOK refused. "Book the hand" is disabled whenever the
+ * tricks do not add up, and it was still painting as bright brass — a live-looking
+ * button that does nothing is worse than no button, because you tap it twice and
+ * assume the app is broken.
+ */
+.btn[disabled] {
+  opacity: 0.4;
+  border-color: rgba(200, 155, 74, 0.22);
+  background: linear-gradient(#291e18, #1d1511);
+  color: var(--parch-dim);
+  box-shadow: inset 0 1px 0 rgba(74, 54, 43, 0.4);
+  cursor: default;
+}
+.btn[disabled]:active {
+  transform: none;
+  box-shadow: inset 0 1px 0 rgba(74, 54, 43, 0.4);
+}
+/* The settings gear in the cabin: square, so it does not compete with the
+   two real actions beside it. */
+.btn.cog {
+  flex: 0 0 54px;
+  font-size: 19px;
+  letter-spacing: 0;
+}
+
+.btn.quiet {
+  border-color: rgba(200, 155, 74, 0.26);
+  background: linear-gradient(#291e18, #1d1511);
+  color: var(--parch-dim);
+}
+
+/* --- Cabin: crew size and the crew itself --------------------------------- */
+
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 6px 0 14px;
+  flex: 0 0 auto;
+}
+.stepper .n {
+  font-family: var(--f-num);
+  font-size: 44px;
+  font-weight: 700;
+  min-width: 62px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.stepper .unit {
+  font-family: var(--f-label);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--parch-dim);
+  text-transform: uppercase;
+}
+.stepper .btn {
+  flex: 0 0 62px;
+  min-height: 62px;
+  font-size: 26px;
+  border-radius: 50%;
+}
+
+/* One row per pirate: emoji, name, and a tap target to change either. */
+.crew-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  background: linear-gradient(#2b2019, #211812);
+  border: 1px solid rgba(200, 155, 74, 0.24);
+}
+.crew-row .em {
+  font-size: 27px;
+  flex: 0 0 auto;
+  background: none;
+  border: 0;
+  padding: 4px;
+  cursor: pointer;
+}
+.crew-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px dashed rgba(200, 155, 74, 0.35);
+  color: var(--parch);
+  font-family: var(--f-display);
+  font-size: 17px;
+  padding: 4px 2px;
+}
+.crew-row input:focus {
+  outline: none;
+  border-bottom-color: var(--amber);
+}
+
+/* Emoji picker. A grid of taps — the old app used a <select> of 100 emoji. */
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+.emoji-grid button {
+  aspect-ratio: 1;
+  font-size: 26px;
+  border-radius: 11px;
+  border: 1px solid rgba(200, 155, 74, 0.28);
+  background: linear-gradient(#2b2019, #211812);
+  cursor: pointer;
+}
+.emoji-grid button:active { transform: scale(0.94); }
+.emoji-grid button.taken {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+/* --- Tally: the whole hand at a glance before booking it ------------------ */
+
+/*
+ * Fixed columns, not `auto`.
+ *
+ * Each row is its own grid, so `auto` columns sized themselves per row: a row
+ * with a bonus badge shifted its numbers left while rows without one did not, and
+ * nothing lined up down the page. The badge slot is now reserved on EVERY row
+ * whether or not it holds anything.
+ *
+ * emoji | name | bud·stick | points | bonus
+ */
+.tally-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 52px 58px 46px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-bottom: 1px solid rgba(200, 155, 74, 0.14);
+}
+.tally-row .em { font-size: 21px; }
+.tally-row .nm {
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tally-row .call {
+  font-family: var(--f-num);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--brass);
+  text-align: right;
+  white-space: nowrap;
+}
+.tally-row .pts {
+  font-family: var(--f-num);
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.tally-row .pts.up { color: var(--teal-hi); }
+.tally-row .pts.down { color: #d98b6a; }
+
+/* The auto-filled marker. Never silent: the prototype auto-assigned the last
+   player a number nobody claimed, which starts an argument once per game. */
+.tally-row.auto .call::after {
+  content: " ~";
+  color: var(--amber);
+}
+
+/*
+ * The bonus mark. A "+" when one could be claimed, the value when one is. Never
+ * any text when there is no bonus — that line was printed four times a hand and
+ * pushed the crew off screen at six players.
+ */
+.tally-row .bonus-badge {
+  /* Sits in its reserved column; must not change the row's other widths. */
+  width: 100%;
+  min-height: 34px;
+  padding: 0 4px;
+  border-radius: 9px;
+  border: 1px dashed rgba(200, 155, 74, 0.45);
+  background: transparent;
+  color: var(--brass);
+  font-family: var(--f-num);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.tally-row .bonus-badge.on {
+  border-style: solid;
+  border-color: var(--brass-hi);
+  background: linear-gradient(#3d2d18, #2b2015);
+  color: var(--parch);
+}
+.tally-row .bonus-badge:active { transform: scale(0.94); }
+
+/* Warnings: shown, never blocking. Players record what happened. */
+.warn {
+  margin: 8px 0 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #f0d3b6;
+  background: rgba(122, 46, 51, 0.24);
+  border: 1px solid rgba(122, 46, 51, 0.6);
+}
+.shortfall {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--amber);
+}
+
+/* --- Bonus entry: a stepper, not a modal over the score ------------------- */
+
+.bonus-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid rgba(200, 155, 74, 0.14);
+}
+.bonus-line .what {
+  flex: 1 1 auto;
+  font-size: 15px;
+}
+.bonus-line .what small {
+  display: block;
+  color: var(--parch-dim);
+  font-size: 12px;
+  font-style: italic;
+}
+.bonus-line .pts {
+  font-family: var(--f-num);
+  color: var(--brass);
+  font-size: 15px;
+}
+.bonus-line .toggle,
+.bonus-line .step {
+  min-width: 46px;
+  min-height: 46px;
+  border-radius: 11px;
+  border: 2px solid rgba(200, 155, 74, 0.45);
+  background: linear-gradient(#2f231a, #241a14);
+  color: var(--parch);
+  font-family: var(--f-num);
+  font-size: 20px;
+  cursor: pointer;
+}
+.bonus-line .toggle.on {
+  border-color: var(--brass-hi);
+  background: linear-gradient(#4d3a1e, #33261a);
+}
+.bonus-line .count {
+  font-family: var(--f-num);
+  font-size: 22px;
+  min-width: 28px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Reckoning ------------------------------------------------------------ */
+
+.podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  margin-bottom: 14px;
+}
+.podium .place {
+  flex: 1 1 0;
+  border-radius: 12px 12px 0 0;
+  padding: 10px 4px 8px;
+  text-align: center;
+  background: linear-gradient(#33251c, #241a14);
+  border: 1px solid rgba(200, 155, 74, 0.4);
+  border-bottom: 0;
+}
+.podium .place .em { font-size: 30px; }
+.podium .place .nm {
+  font-family: var(--f-label);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--parch-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.podium .place .pts {
+  font-family: var(--f-num);
+  font-size: 22px;
+  font-weight: 700;
+}
+.podium .p1 { height: 132px; border-color: var(--gold); }
+.podium .p2 { height: 108px; border-color: var(--silver); }
+.podium .p3 { height: 92px; border-color: var(--bronze); }
+
+.rest-row,
+.hall-row {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 9px;
+  padding: 8px;
+  border-bottom: 1px solid rgba(200, 155, 74, 0.13);
+  font-size: 14px;
+}
+.rest-row .pts,
+.hall-row .pts {
+  font-family: var(--f-num);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.hall-row .meta {
+  grid-column: 2 / -1;
+  font-size: 11.5px;
+  color: var(--parch-dim);
+}
+
+.empty {
+  text-align: center;
+  padding: 34px 18px;
+  color: var(--parch-dim);
+  font-style: italic;
+  line-height: 1.6;
+}
+
+/* --- Settings ------------------------------------------------------------- */
+
+.setting {
+  padding: 12px 4px;
+  border-bottom: 1px solid rgba(200, 155, 74, 0.14);
+}
+.setting .label {
+  font-family: var(--f-label);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--parch-dim);
+  display: block;
+  margin-bottom: 8px;
+}
+.segmented {
+  display: flex;
+  gap: 8px;
+}
+.segmented button {
+  flex: 1 1 0;
+  min-height: 46px;
+  border-radius: 11px;
+  border: 2px solid rgba(200, 155, 74, 0.35);
+  background: linear-gradient(#2b2019, #211812);
+  color: var(--parch-dim);
+  font-family: var(--f-label);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.segmented button.on {
+  border-color: var(--brass-hi);
+  background: linear-gradient(#4d3a1e, #33261a);
+  color: var(--parch);
+}
+.setting .about {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--parch-dim);
+  line-height: 1.5;
+}
+
+

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- A brass ship's helm on tarred wood: the app is "Rodret", the helm. -->
+  <defs>
+    <radialGradient id="deck" cx="50%" cy="18%" r="85%">
+      <stop offset="0%" stop-color="#3A2A1E"/>
+      <stop offset="70%" stop-color="#1B1512"/>
+      <stop offset="100%" stop-color="#120E0C"/>
+    </radialGradient>
+    <linearGradient id="brass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7A5A28"/>
+      <stop offset="35%" stop-color="#E6C983"/>
+      <stop offset="60%" stop-color="#C89B4A"/>
+      <stop offset="100%" stop-color="#7A5A28"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#deck)"/>
+  <g transform="translate(256 256)">
+    <!-- spokes -->
+    <g stroke="url(#brass)" stroke-width="17" stroke-linecap="round">
+      <line x1="0" y1="-186" x2="0" y2="186"/>
+      <line x1="-186" y1="0" x2="186" y2="0"/>
+      <line x1="-131" y1="-131" x2="131" y2="131"/>
+      <line x1="-131" y1="131" x2="131" y2="-131"/>
+    </g>
+    <circle r="124" fill="none" stroke="url(#brass)" stroke-width="26"/>
+    <circle r="150" fill="none" stroke="#7A5A28" stroke-width="6" opacity=".55"/>
+    <circle r="46" fill="#241A14" stroke="url(#brass)" stroke-width="13"/>
+    <circle r="13" fill="#F2A73B" opacity=".92"/>
+  </g>
+</svg>

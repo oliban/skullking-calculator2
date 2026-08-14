@@ -1,0 +1,745 @@
+/*
+ * Rodret — the play screen.
+ *
+ * The no-scroll guarantee is arithmetic, not hope: the rail and prompt are fixed
+ * bands, the pad takes the remaining space, and every container is
+ * `overflow: hidden`. There is no scrollable surface in the entry path, so there
+ * is no scroll gesture to trigger by accident with a thumb.
+ *
+ * Layout ported from the evaluated prototype. Where the prototype hardcoded
+ * 390x844, this uses dvh and the real safe-area insets.
+ */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--tar);
+  overscroll-behavior: none;
+  /* Stops the double-tap-to-zoom delay on iOS so taps feel immediate. */
+  touch-action: manipulation;
+}
+
+body {
+  font-family: var(--f-display);
+  color: var(--parch);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  /* Grey tap flash on iOS reads as a bug next to our own press states. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The deck: lantern glow from above, faint plank seams, tar below. Painted once
+   on a fixed element — layered gradients on a scrolling surface jank on iOS. */
+#app {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 62% at 50% 0%, #3a2a1e 0%, rgba(58, 42, 30, 0) 70%),
+    repeating-linear-gradient(
+      91deg,
+      rgba(255, 255, 255, 0.014) 0 1px,
+      rgba(0, 0, 0, 0) 1px 74px
+    ),
+    linear-gradient(#1b1512, var(--tar) 55%, #120e0c);
+}
+
+/*
+ * The active player's colour, washed across the deck.
+ *
+ * This is the primary "whose turn is it" signal — readable from across a table
+ * and without reading any text. It is a wash rather than a solid so the cozy
+ * lantern ground still shows through; the colour identifies, it does not repaint
+ * the app.
+ */
+#app::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(
+      120% 55% at 50% 42%,
+      var(--active-wash, transparent),
+      transparent 72%
+    );
+  transition: background 0.32s var(--ease);
+}
+
+/* ═══ The brass rail ═══════════════════════════════════════════════════════
+   Fixed. Present on every screen. One chip per player, ordered by SEAT and
+   never by rank, so "Anna is the third chip" stays true all game. */
+
+#rail {
+  flex: 0 0 auto;
+  height: calc(var(--rail-h) + var(--safe-top));
+  padding: calc(var(--safe-top) + 6px) 12px 0;
+  position: relative;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background:
+    linear-gradient(180deg, rgba(230, 201, 131, 0.1), rgba(0, 0, 0, 0) 34%),
+    linear-gradient(#2c211a, #211812);
+  border-bottom: 3px solid transparent;
+  border-image: linear-gradient(
+      90deg,
+      var(--brass-lo),
+      var(--brass) 18%,
+      var(--brass-hi) 50%,
+      var(--brass) 82%,
+      var(--brass-lo)
+    )
+    1;
+  box-shadow:
+    0 6px 18px -6px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(230, 201, 131, 0.45);
+}
+
+/* Which hand we are on. Small, centred, brass — a plaque on the rail. */
+.rail-hand {
+  flex: 0 0 auto;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  font-family: var(--f-label);
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brass-hi);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Tappable once the hand is complete — the way back to booking. */
+.rail-hand.ready {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  width: 100%;
+  padding: 0;
+}
+.rail-hand.ready::after {
+  content: " \2713";
+  color: var(--teal-hi);
+}
+.rail-hand.ready:active { opacity: 0.6; }
+
+.rail-chips {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.chip {
+  /* A button element — reset the UA styling the rest of this rule assumes. */
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  text-align: center;
+  cursor: pointer;
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  border-radius: 11px;
+  padding: 5px 3px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  background: linear-gradient(#33251c, #241a14);
+  /* The player's colour, at low strength while they are not being asked. */
+  border: 1px solid color-mix(in srgb, var(--pc, var(--brass)) 55%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(230, 201, 131, 0.2),
+    0 2px 0 var(--undercut);
+  transition:
+    transform 0.22s var(--ease),
+    box-shadow 0.22s,
+    background 0.3s,
+    border-color 0.3s;
+}
+
+.chip .em {
+  font-size: 25px;
+  line-height: 1;
+  transition: transform 0.22s;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
+}
+
+/* A colour bar along the top of the chip: the legend for the surface wash. */
+.chip::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--pc, var(--brass));
+  opacity: 0.85;
+}
+
+/*
+ * The name has to be readable at arm's length on a table, not merely present.
+ * Wide letter-spacing at 8px was the real culprit: it shrank the effective glyph
+ * size and forced an early ellipsis. Bigger, tighter, brighter.
+ */
+.chip .nm {
+  /*
+   * The display serif in mixed case, NOT the wide uppercase label face. A chip
+   * is only ~85px across at four players, and Copperplate caps ate the name
+   * after nine characters; "Skrack-Roberts" fits whole here at a larger size.
+   */
+  font-family: var(--f-display);
+  font-size: 12.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: color-mix(in srgb, var(--parch) 88%, transparent);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The pirate being asked gets their name in their own colour. */
+.chip.ask .nm { color: var(--pc-bright, var(--parch)); }
+
+.chip .total {
+  font-family: var(--f-num);
+  font-size: 21px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  color: var(--parch);
+}
+
+/*
+ * The bud/stick line for the hand in progress. This is the addition to the
+ * prototype: The Helm's one real weakness was that mid-hand you could not see
+ * what anyone bid without an undiscoverable swipe. Costs ~16px of rail.
+ */
+.chip .call {
+  font-family: var(--f-num);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--brass);
+  height: 13px;
+  line-height: 13px;
+  white-space: nowrap;
+}
+.chip .call .pending { color: rgba(178, 155, 118, 0.55); }
+/* A hit shows a mark; the eye finds it faster than reading two numbers. */
+.chip .call .hit { color: var(--teal-hi); }
+.chip .call .miss { color: #d98b6a; }
+
+/* Medal / shame pip. */
+.chip .pip {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  background: linear-gradient(#332419, #241a14);
+  border: 1px solid rgba(200, 155, 74, 0.5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+/* Tapping a chip re-opens that pirate's number, so it needs to feel pressable. */
+.chip:active {
+  transform: translateY(2px) scale(0.985);
+}
+.chip.ask:active {
+  transform: translateY(-2px) scale(0.985);
+}
+
+/* The seat being asked. Doubles as the turn indicator, so the pad needs no
+   name label at all. */
+/* Asked: the chip lifts and burns in its OWN colour, matching the surface. */
+.chip.ask {
+  transform: translateY(-4px);
+  background: linear-gradient(
+    color-mix(in srgb, var(--pc, var(--amber)) 26%, #33251a),
+    #33251a
+  );
+  border-color: var(--pc-bright, var(--amber));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--pc, var(--amber)) 45%, transparent),
+    0 0 22px color-mix(in srgb, var(--pc, var(--amber)) 42%, transparent),
+    inset 0 1px 0 rgba(255, 220, 150, 0.32),
+    0 4px 0 var(--undercut);
+}
+.chip.ask .total { color: var(--pc-bright, var(--parch)); }
+.chip.ask .em { transform: scale(1.06); }
+.chip.ask::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -11px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+  border-top-color: var(--pc-bright, var(--amber));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+
+/*
+ * Shame. Players KEEP their own emoji — the prototype swapped it for a bucket,
+ * which made every shamed player look like the same person (and identical to
+ * the crew member whose emoji actually is a bucket).
+ */
+.chip.shame {
+  border-color: rgba(122, 46, 51, 0.9);
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(242, 228, 201, 0.05) 0 2px,
+      rgba(0, 0, 0, 0) 2px 6px
+    ),
+    linear-gradient(#3a1d20, #2a1416);
+  animation: wobble 3s ease-in-out infinite;
+}
+.chip.shame .total { color: #e8a0a2; }
+/* Being asked must still read as lifted, even while drowning. */
+.chip.ask.shame {
+  animation: none;
+  transform: translateY(-4px) rotate(-1.5deg);
+}
+
+@keyframes wobble {
+  0%, 100% { transform: rotate(-1.5deg); }
+  50% { transform: rotate(0.6deg); }
+}
+
+/* Six players: drop the name, shrink the emoji. Honest limit of the design. */
+#rail.crew-5 .chip .em { font-size: 22px; }
+#rail.crew-5 .chip .nm { font-size: 11.5px; }
+#rail.crew-6 .chip {
+  border-radius: 9px;
+  padding: 4px 1px;
+}
+#rail.crew-6 .chip .em { font-size: 20px; }
+/* Kept rather than hidden — a nameless chip defeats the point of the rail. It
+   ellipsises hard at this width, but the first few letters plus the emoji and
+   the colour are enough to identify anyone. */
+#rail.crew-6 .chip .nm { font-size: 10.5px; }
+#rail.crew-6 .chip .total { font-size: 18px; }
+#rail.crew-6 .chip .call { font-size: 10px; }
+#rail.crew-6 .chip .pip {
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
+  top: -4px;
+  right: -4px;
+}
+
+/* ═══ Stage ════════════════════════════════════════════════════════════════ */
+
+#stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Takes all the slack between rail and pad, and centres the question in it. */
+#prompt {
+  flex: 1 1 auto;
+  min-height: var(--prompt-h);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
+  padding: 0 16px;
+}
+
+#prompt .hand {
+  font-family: var(--f-label);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Outlined while you are promising, filled while you are reckoning. */
+.phase-tag {
+  padding: 2px 9px;
+  border-radius: 4px;
+  letter-spacing: 0.18em;
+}
+.phase-tag[data-phase="bid"] {
+  border: 1px solid color-mix(in srgb, var(--active-base, var(--brass)) 55%, transparent);
+  color: var(--active-bright, var(--brass));
+}
+.phase-tag[data-phase="trick"] {
+  background: color-mix(in srgb, var(--active-base, var(--brass)) 80%, var(--ink));
+  color: #fdf6e6;
+  font-weight: 700;
+}
+
+/* One line, never two: the band is a fixed budget, so it must not wrap. */
+#prompt .ask {
+  font-size: 16px;
+  font-style: italic;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#prompt .ask b {
+  font-style: normal;
+  font-family: var(--f-label);
+  font-size: 13.5px;
+  letter-spacing: 0.07em;
+  color: var(--amber);
+}
+
+/*
+ * The bid echoed back during the trick phase. Eight hands in nobody remembers
+ * what they announced, and it is the number the score turns on.
+ */
+#prompt .said {
+  margin-top: 2px;
+  font-family: var(--f-num);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--active-bright, var(--brass));
+  border: 1px solid color-mix(in srgb, var(--active-base, var(--brass)) 45%, transparent);
+  border-radius: 999px;
+  padding: 3px 12px;
+}
+
+/* The undo ghost: shows the last entry, and tapping it takes it back. */
+#prompt .ghost {
+  font-size: 11.5px;
+  color: var(--parch-dim);
+  height: 14px;
+  line-height: 14px;
+  background: none;
+  border: 0;
+  font-family: inherit;
+  padding: 0;
+  color: var(--parch-dim);
+}
+#prompt .ghost:active { color: var(--amber); }
+
+/* ═══ The pad ══════════════════════════════════════════════════════════════
+   Welded to the bottom (`align-content: end`) so the keys sit in the thumb
+   arc. Rows and key height are set by JS from the key count, synchronously —
+   the prototype's pad clipped its top row on first paint because sizing waited
+   for a requestAnimationFrame. */
+
+#pad {
+  /* Height is set in JS from the key count: content-sized, welded to the
+     bottom, so the keys always land in the thumb arc. */
+  flex: 0 0 auto;
+  overflow: hidden;
+  padding: 6px 12px calc(var(--safe-bottom) + 10px);
+  display: grid;
+  grid-template-columns: repeat(var(--pad-cols, 4), 1fr);
+  gap: 10px;
+  grid-auto-rows: var(--key-h);
+  align-content: end;
+  transition: transform var(--slide) var(--ease), opacity var(--slide);
+}
+
+/* Mid-swap the pad is invisible but would still accept taps, writing a bid
+   value into the trick phase. */
+#pad.slide {
+  transform: translateX(-26px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.key {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--f-num);
+  font-size: clamp(26px, 8vw, 40px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--parch);
+  background: radial-gradient(
+    140% 130% at 30% 18%,
+    #3c2b21,
+    var(--wood) 62%,
+    #241a14
+  );
+  box-shadow:
+    inset 0 1px 0 var(--bevel),
+    inset 0 -2px 0 var(--undercut),
+    0 3px 0 #100c0a,
+    0 7px 14px -5px rgba(0, 0, 0, 0.65);
+  border: 2px solid rgba(200, 155, 74, 0.55);
+  /* Fast down, slightly springy back up: the key reads as a physical thing
+     being pushed into the deck rather than a rectangle changing colour. */
+  transition:
+    transform 160ms cubic-bezier(0.18, 1.5, 0.4, 1),
+    box-shadow 160ms ease-out,
+    opacity 0.2s,
+    border-color 0.2s;
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* Wood grain. */
+.key::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background: repeating-linear-gradient(
+    97deg,
+    rgba(255, 255, 255, 0.022) 0 1px,
+    rgba(0, 0, 0, 0) 1px 9px
+  );
+}
+
+.key .lbl {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+/* Zero gets brass: it is the most-tapped key and the one with a consequence
+   (a nil is worth 10x the hand, or costs it). */
+.key.zero {
+  border-color: var(--brass);
+  background: radial-gradient(
+    150% 140% at 30% 15%,
+    #4a3524,
+    #2f231a 60%,
+    #241a14
+  );
+}
+.key.zero .sub {
+  position: absolute;
+  bottom: 7px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: var(--f-label);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  color: rgba(200, 155, 74, 0.8);
+}
+
+.key:active,
+.key.press {
+  /* Travels the full height of its own 3px shadow, so the key visibly sinks
+     flush into the deck. */
+  transform: translateY(4px) scale(0.975);
+  transition-duration: 55ms;
+  transition-timing-function: ease-out;
+  box-shadow:
+    inset 0 3px 10px rgba(0, 0, 0, 0.6),
+    inset 0 0 24px rgba(226, 112, 58, 0.5),
+    0 0 0 #100c0a;
+}
+
+/* Illegal values go inert rather than disappearing, so the pad's shape — and
+   therefore muscle memory — stays stable as a hand fills up. */
+.key.dead {
+  opacity: 0.34;
+  border-color: rgba(200, 155, 74, 0);
+  background: linear-gradient(#231a15, #1d1511);
+  box-shadow:
+    inset 0 1px 0 rgba(74, 54, 43, 0.5),
+    inset 0 -1px 0 var(--undercut);
+  pointer-events: none;
+}
+.key.dead::after {
+  opacity: 1;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(242, 228, 201, 0.055) 0 1px,
+    rgba(0, 0, 0, 0) 1px 5px
+  );
+}
+
+/* Wide keys: the last value key spans the leftover columns so the grid never
+   has a hole, and no filler key exists to mis-tap. */
+.key.span-2 { grid-column: span 2; }
+.key.span-3 { grid-column: span 3; }
+.key.span-4 { grid-column: span 4; }
+
+.key.act {
+  font-family: var(--f-label);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  border-color: rgba(200, 155, 74, 0.45);
+  background: linear-gradient(#31241b, #241a14);
+  color: var(--brass);
+}
+.key.book {
+  border-color: var(--brass-hi);
+  background: linear-gradient(#4d3a1e, #33261a);
+  color: var(--parch);
+}
+
+/* ═══ The ledger surface ══════════════════════════════════════════════════
+   Reporting tricks happens on parchment: the surface inverts from dark deck to
+   lit paper, which is impossible to mistake for the bidding screen even at a
+   glance from across a table. The rail stays dark throughout, so the scores
+   never move and the app still reads as one place. */
+
+#stage[data-phase="trick"] {
+  background:
+    radial-gradient(
+      120% 80% at 50% 0%,
+      color-mix(in srgb, var(--active-base, var(--brass)) 18%, #f6ead2),
+      rgba(0, 0, 0, 0) 76%
+    ),
+    repeating-linear-gradient(
+      93deg,
+      rgba(120, 90, 60, 0.045) 0 1px,
+      rgba(0, 0, 0, 0) 1px 5px
+    ),
+    linear-gradient(#f4e6cc, #e6d3b0 70%, #d9c39c);
+  box-shadow: inset 0 8px 18px -10px rgba(59, 43, 31, 0.55);
+}
+
+/* Ink, not lantern-light, once we are on paper. */
+#stage[data-phase="trick"] #prompt .ask { color: var(--ink); }
+#stage[data-phase="trick"] #prompt .ask b {
+  color: color-mix(in srgb, var(--active-base, var(--brass)) 72%, var(--ink));
+}
+#stage[data-phase="trick"] #prompt .ghost { color: rgba(59, 43, 31, 0.6); }
+#stage[data-phase="trick"] #prompt .said {
+  color: color-mix(in srgb, var(--active-base, var(--brass)) 55%, var(--ink));
+  border-color: color-mix(in srgb, var(--active-base, var(--brass)) 60%, var(--ink));
+  background: rgba(255, 255, 255, 0.28);
+}
+#stage[data-phase="trick"] #prompt .hand {
+  color: color-mix(in srgb, var(--active-base, var(--brass)) 60%, var(--ink));
+}
+
+/* ═══ Telling the two questions apart ═════════════════════════════════════
+   "How many will you take?" and "How many did you take?" are different
+   questions with the same key values, and answering the wrong one silently
+   corrupts the hand. So the two phases differ in shape, colour and label — not
+   just in the sentence at the top, which nobody re-reads by hand six. */
+
+/* BID: square-shouldered brass keys on bare wood. A declaration. */
+#pad[data-phase="bid"] .key {
+  border-radius: 14px;
+  border-color: color-mix(in srgb, var(--active-base, var(--brass)) 62%, transparent);
+}
+
+/* TRICKS: round ink-stamped counters on paper. A reckoning, not a promise. */
+#pad[data-phase="trick"] .key {
+  /* Large but finite: a full pill on a non-square key renders as an ellipse,
+     which reads as a mistake rather than as a counter. */
+  border-radius: 40px;
+  color: var(--ink);
+  border: 2px solid color-mix(in srgb, var(--active-base, var(--brass)) 55%, var(--ink));
+  background: radial-gradient(
+    120% 120% at 32% 22%,
+    #fffaf0,
+    color-mix(in srgb, var(--active-base, var(--brass)) 12%, #f0e0c2) 70%,
+    #e3cfa9
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 2px 0 rgba(122, 90, 40, 0.35),
+    0 5px 10px -4px rgba(59, 43, 31, 0.4);
+}
+#pad[data-phase="trick"] .key::after {
+  opacity: 0.35;
+  background: repeating-linear-gradient(
+    97deg,
+    rgba(59, 43, 31, 0.05) 0 1px,
+    rgba(0, 0, 0, 0) 1px 7px
+  );
+}
+#pad[data-phase="trick"] .key .lbl { text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55); }
+#pad[data-phase="trick"] .key:active,
+#pad[data-phase="trick"] .key.press {
+  transform: translateY(3px) scale(0.975);
+  transition-duration: 55ms;
+  box-shadow:
+    inset 0 2px 8px rgba(59, 43, 31, 0.35),
+    inset 0 0 18px color-mix(in srgb, var(--active-base, var(--brass)) 40%, transparent),
+    0 0 0 rgba(122, 90, 40, 0.35);
+}
+/* Inert values on paper: struck through rather than dimmed into the dark. */
+#pad[data-phase="trick"] .key.dead {
+  opacity: 1;
+  color: rgba(59, 43, 31, 0.32);
+  border-color: rgba(59, 43, 31, 0.16);
+  background: linear-gradient(#ece0c8, #e2d4b8);
+  box-shadow: none;
+}
+#pad[data-phase="trick"] .key.dead::after {
+  opacity: 1;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(59, 43, 31, 0.075) 0 1px,
+    rgba(0, 0, 0, 0) 1px 5px
+  );
+}
+
+/*
+ * The value this player bid, ringed. Making the expected answer visually
+ * findable is the whole trick: most of the time the bid WAS made, so the most
+ * likely tap is also the most obvious one.
+ */
+#pad[data-phase="trick"] .key.target {
+  border-width: 3px;
+  border-color: color-mix(in srgb, var(--active-base, var(--brass)) 85%, var(--ink));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 0 0 4px color-mix(in srgb, var(--active-base, var(--brass)) 22%, transparent),
+    0 2px 0 rgba(122, 90, 40, 0.35);
+}
+#pad[data-phase="trick"] .key.target::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 34px;
+  border: 1px dashed color-mix(in srgb, var(--active-base, var(--brass)) 55%, var(--ink));
+  pointer-events: none;
+}
+/* A dead target still reads as the bid, just unreachable. */
+#pad[data-phase="trick"] .key.target.dead { border-width: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .chip.shame { animation: none; transform: rotate(-1.5deg); }
+  #pad { transition: none; }
+  #app::before { transition: none; }
+}

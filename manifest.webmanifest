@@ -1,0 +1,18 @@
+{
+  "name": "Skull King Poängräknare",
+  "short_name": "Rodret",
+  "description": "Poängräknare för Skull King: Das Würfelspiel",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#171210",
+  "theme_color": "#171210",
+  "lang": "sv",
+  "icons": [
+    { "src": "icons/icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

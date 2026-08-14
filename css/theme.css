@@ -1,0 +1,88 @@
+/*
+ * Design tokens for "Rodret" (The Helm).
+ *
+ * Cozy pirate means a lantern-lit tavern below deck: tarred wood, worn brass,
+ * candle amber, parchment. Warm, not grim — no high-contrast black-and-white
+ * skull-and-crossbones anywhere.
+ *
+ * Palette carried over from the evaluated prototype so the shipped app looks
+ * like the thing that was approved.
+ */
+
+:root {
+  /* Ground and wood. The app sits on a tarred deck. */
+  --tar: #171210;
+  --plank: #241a15;
+  --wood: #2e211a;
+  --bevel: #4a362b;
+  --undercut: #0d0a08;
+
+  /* Brass. Rails, nail heads, chip frames. */
+  --brass: #c89b4a;
+  --brass-hi: #e6c983;
+  --brass-lo: #7a5a28;
+
+  /* Lantern light. Used for the "whose turn" glow and for focus. */
+  --amber: #f2a73b;
+  --ember: #e2703a;
+
+  /* Ink and parchment. All body copy sits on these. */
+  --parch: #f2e4c9;
+  --parch-dim: #b29b76;
+  --ink: #3b2b1f;
+
+  /* Accents. Teal for the reckoning, wine for the shame state. */
+  --teal: #2e5d5b;
+  --teal-hi: #5c9491;
+  --wine: #7a2e33;
+
+  /* Medals. */
+  --gold: #e8b54a;
+  --silver: #c8cdd2;
+  --bronze: #b5763f;
+
+  /*
+   * Type. iOS ships all of these, so the app needs no web fonts — which keeps
+   * it a genuinely offline-first PWA with nothing to cache but its own source.
+   * Non-Apple platforms degrade to Georgia and lose some character; that is an
+   * accepted cost of iPhone-first.
+   */
+  --f-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
+    Georgia, serif;
+  --f-num: "American Typewriter", Rockwell, Georgia, serif;
+  --f-label: Copperplate, "Copperplate Gothic Bold", Georgia, serif;
+
+  /* Safe areas. Real env() values on device; the fallbacks match an iPhone 14. */
+  --safe-top: env(safe-area-inset-top, 47px);
+  --safe-bottom: env(safe-area-inset-bottom, 34px);
+
+  /*
+   * Fixed layout bands. The no-scroll guarantee is arithmetic: the rail and the
+   * pad are fixed, and the middle absorbs the slack. Changing these means
+   * re-running the height-budget test.
+   */
+  --rail-h: 148px; /* hand counter + name + total + the bud/stick line */
+  --prompt-h: 80px; /* hand counter, question, undo ghost */
+
+  /*
+   * Set by JS to the exact fit for the current hand. The fallback is the
+   * worst case (hand 8, three rows) so even the very first paint cannot
+   * overflow — the prototype's pad clipped its top row because sizing waited
+   * for a requestAnimationFrame.
+   */
+  --key-h: 118px;
+
+  /* Motion. Transform and opacity only; anything else janks on iOS. */
+  --tap: 90ms;
+  --slide: 200ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* Respect the system setting; the design is dark by nature, so this only
+   removes motion rather than restyling. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --tap: 0ms;
+    --slide: 0ms;
+  }
+}
